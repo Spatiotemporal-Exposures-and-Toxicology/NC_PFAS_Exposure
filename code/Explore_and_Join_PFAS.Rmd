@@ -1,0 +1,250 @@
+---
+title: "Explore_and_Join_PFAS"
+author: "Kyle P Messier"
+date: "2023-07-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, packages, echo=FALSE}
+library(data.table)
+library(ggplot2)
+library(tidyverse)
+library(magrittr)
+library(janitor)
+library(sf)
+library(cartography)
+library(nhdplusTools)
+
+
+```
+
+
+## Reading in Data
+
+Here, we read in the PFAS data we obtained from Rebecca Fry at UNC.
+
+1) PFAS Monitoring
+
+We then read in geospatial data:
+
+1) Public water supply sources (polygons)
+2) Surface water intakes (points)
+3) Current Public Water systems  (polygons)
+4) NC Surface Water Supply Watersheds (polygons)
+5) EPA Federal Registered Facilities in NC
+
+```{r Read in Data, echo= FALSE}
+#### Read in the PFAS Data ####
+PFAS <- fread("input/PFAST-Summary-Round1.csv")
+
+
+#### Read in the GIS Data from NCOneMap ####
+
+##Public Water Supply Sources ##
+Public.Water.Supply.Sources <- sf::read_sf("input/GIS/Public_Water_Supply_Water_Sources/Public_Water_Supply_Water_Sources.shp")
+
+## Surface_Water_Intakes ##
+Surface.Water.Intakes <- sf::read_sf("input/GIS/Surface_Water_Intakes/Surface_Water_Intakes.shp")
+
+## Current Public Water Systems ## 
+Current.Public.Water.Systems <- sf::read_sf("input/GIS/Type_A_Current_Public_Water_Systems_(2004)/Type_A_Current_Public_Water_Systems_(2004).shp")
+
+## Surface Water Supply Watersheds ## 
+Surface.Watersheds <- sf::read_sf("input/GIS/NC_Surface_Water_Supply_Watersheds/dwq_wsws_20141126.shp")
+
+
+## EPA Federal Registered Facilities in NC
+FRS <- sf::read_sf("input/GIS/state_single_nc/STATE_SINGLE_NC.csv")
+
+# FRS <- fread("input/GIS/state_single_nc/STATE_SINGLE_NC.csv")  
+# FRS.Water <- subset(FRS,SITE_TYPE_NAME == "WATER SYSTEM")
+
+```
+
+## Create coordinates in consistent projected and geographic coordinate systems
+ 
+Transform and/or calculate consistent spatial coordinates
+The public water supply sources uses the NC State Plane coordinate system
+we will use this as the common projected coordinate system
+We will also calculate lat/lon coordinates
+ 
+
+
+```{r,echo=FALSE}
+ 
+PWS.crs <- st_crs(Public.Water.Supply.Sources)
+
+PWS.coords.proj <- Public.Water.Supply.Sources %>% st_coordinates() %>% as_tibble()
+PWS.coords.geo <- Public.Water.Supply.Sources %>% 
+                  st_transform(crs = 4269) %>% 
+                  st_coordinates() %>% as_tibble() %>% 
+                  rename("Longitude" = "X","Latitude" = "Y")
+
+Public.Water.Supply.Sources <- cbind(Public.Water.Supply.Sources,PWS.coords.proj,PWS.coords.geo)
+
+```
+
+## Fix unmatched ID
+
+There are many mismatches between the EPA ID number and the ID number in the 
+PFAS data. We go through by hand and make the necessary changes so 
+that we do not lose data/locations when we do the join 
+
+
+ Prior to Joining we have to fix some wrong IDs in the PFAS data
+ StationID and EPA_srcID of the unmatched PFAS data
+ We need to correct these to the correct public water source ID (EPA_srcID)
+ We'll do this by hand
+ 
+ [1,] "NC0100010-2" "39012"
+ [2,] "NC0161015"   "18601"
+ [3,] "NC0286020-2" "65263"
+ [4,] "NC0363025-2" "39297"
+ [5,] "NC0407030"   "31427"
+ [6,] "NC0424020"   "32565"
+ [7,] "NC0431010"   "33929"
+ [8,] "NC0433015"   "34137"
+ [9,] "NC0437020"   "34248"
+ [10,] "NC0446015"   "34565"
+ [11,] "NC0452010"   "34686"
+ [12,] "NC0465020"   "35340"
+ [13,] "NC0465025"   "35349"
+ [14,] "NC0466040"   "35860"
+ [15,] "NC6059015-1" "71963"
+
+
+Here we fix the matches that are relatively straight forward
+```{r, Fix Straighforwad Mismatches, echo=FALSE}
+
+
+ # FRS.Water.coords.proj <- FRS.Water %>% sf::st_coordinates()
+
+# NC0100010-2 --> simple mismatch, change 39012 to 39013
+PFAS$EPA_srcID[PFAS$EPA_srcID== 39012] = 39013
+
+#NC0161015  -->  Multiple wells with the IDs  different. 
+#                Change it to the one that looks to be the primary source
+
+PFAS$EPA_srcID[PFAS$EPA_srcID== 18601] = 39013
+
+# NC0286020-2 --> NC0286020 is a match to the town. Change the EPA_srcID to match
+PFAS$EPA_srcID[PFAS$EPA_srcID== 65263] = 39251
+
+# NC0363025-2 --> simple mismatch in EPA_srcID (also remove the -2 in station ID)
+PFAS$EPA_srcID[PFAS$EPA_srcID== 39297] = 39296
+
+
+# "NC0424020"   "32565" --> --> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 32565] = 32566
+
+# "NC0431010"   "33929" --> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 33929] = 33932
+
+# NC0433015"   "34137"--> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 34137] = 34139
+
+# "NC0437020"   "34248"--> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 34248] = 34250
+
+# "NC0446015"   "34565"--> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 34565] = 34566
+
+
+# "NC0465020"   "35340"--> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 35340] = 35339
+
+
+#"NC0465025"   "35349"--> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 35349] = 35350
+
+# "NC0466040"   "35860"--> Multiple wells with the IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 35860] = 35861
+
+# "NC6059015-1" "71963"-->  IDs just slightly different. 
+#                       Change it to the one that looks to be the primary source
+PFAS$EPA_srcID[PFAS$EPA_srcID== 71963] = 74912
+
+
+```
+
+
+
+
+## Join with the public water supply wells
+```{r, Join, echo=FALSE}
+
+# Do the join 
+# Drop unnecessary columns
+
+PFAS$EPA_srcID <- as.numeric(PFAS$EPA_srcID)
+PFAS.Water.Join <- left_join(PFAS,Public.Water.Supply.Sources,by = c("EPA_srcID"= "federal_id")) |> 
+   select(-c(objectid,pws_id,county,owner,state_id,source_nam,reg_name,system_nam,system_add,system_cit,system_sta,system_zip,
+             system_con,system_pop,owner_addr,owner_city,owner_stat,owner_zip,wsw_class,intake_loc,source_ava,well_yield,well_depth,X,Y))
+
+
+
+```
+
+
+## Fix the more troublesome IDs 
+
+```{r fix the troublesome IDs with direct substitution, echo=FALSE}
+# NC0407030  31427 --> Can join using the water system name in FRS (BATH WATER SYSTEM) Has lat/lon
+#381241
+# Public.Water.Supply.Sources[Public.Water.Supply.Sources station_name == "BATH WATER SYSTEM"),]
+# REGISTRY_ID = 110027381241
+# We directly substitute the long/lat into the PFAS and Water Supply joined data
+
+PFAS.Water.Join[PFAS.Water.Join$station_name=="BATH WATER SYSTEM",]$Longitude = as.numeric(FRS[FRS$REGISTRY_ID==110027381241,]$LONGITUDE83)
+PFAS.Water.Join[PFAS.Water.Join$station_name=="BATH WATER SYSTEM",]$Latitude = as.numeric(FRS[FRS$REGISTRY_ID==110027381241,]$LATITUDE83)
+
+
+# "NC0452010"   "34686"
+# This is the town of Maysville - it does not match to the public water supply or FRS
+# It is also not mapped on the SDWIS or FRS website. It is however, near Camp Lejune 
+# and has many his PFAS, so we need to resolve it 
+
+# Coordinates provided by the Town of Maysville, Town Manager
+maysville.lat <- 34.907347
+maysville.lon <- -77.232910
+
+
+PFAS.Water.Join[PFAS.Water.Join$station_id=="NC0452010",]$Longitude = maysville.lon
+PFAS.Water.Join[PFAS.Water.Join$station_id=="NC0452010",]$Latitude = maysville.lat
+
+# The PFAS and public water supply intake join
+
+PFAS.Water.Supply <- sf::st_as_sf(PFAS.Water.Join)
+
+
+```
+
+
+
+## Let's join the PFAS data with the water supply distribution area
+```{r}
+
+PFAS.Water.Distribution <- sf::st_join(PFAS.Water.Supply,Current.Public.Water.Systems,left=FALSE,join = st_nearest_feature)
+
+
+# make a plot of the unique distribution areas
+PFAS.Dist.Plot <- sf::st_difference(st_geometry(PFAS.Water.Distribution))
+plot(PFAS.Dist.Plot)
+```
+
+
+
+
+
