@@ -227,6 +227,7 @@ PFAS.Water.Join[PFAS.Water.Join$station_id=="NC0452010",]$Latitude = maysville.l
 # The PFAS and public water supply intake join
 
 PFAS.Water.Supply <- sf::st_as_sf(PFAS.Water.Join)
+sf::st_write(PFAS.Water.Supply,"input/PFAS_Public_Source_Join.gpkg")
 
 
 ```

@@ -1,0 +1,143 @@
+---
+title: "NC Public Water Utilities"
+author: "Kyle P Messier"
+date: "2023-07-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, packages, echo=FALSE, include=FALSE}
+library(data.table)
+library(ggplot2)
+library(tidyverse)
+library(magrittr)
+library(janitor)
+library(sf)
+library(mapsf)
+library(nhdplusTools)
+
+
+```
+
+
+## North Carolina Water Utility Data Sources
+
+1) Public Water Source Intakes
+These are point locations of well intakes for public water sources. 
+I have joined these to our PFAS data using a unique EPA assigned ID
+
+Obtained from NCOneMap at https://arcg.is/iD8vy
+
+2) Type A Current Public Water Systems 
+These are polygons that are supposed to represent the entire area of a 
+public water system. 
+
+Obtained from NCOneMap at https://arcg.is/1Ge8zm
+
+```{r Read in Data, echo= FALSE}
+
+## Water Supply joined with PFAS Data
+
+PFAS.join <- sf::st_read("input/PFAS_Public_Source_Join.gpkg")
+
+## Current Public Water Systems ## 
+Current.Public.Water.Systems <- sf::read_sf("input/GIS/Type_A_Current_Public_Water_Systems_(2004)/Type_A_Current_Public_Water_Systems_(2004).shp")
+
+
+```
+
+
+The following map shows the North Carolina Public Water systems with 
+the colors representing their ownership types. 
+
+
+```{r, echo=FALSE}
+# set a theme
+mf_theme("default")
+# plot a shadow
+mf_init(Current.Public.Water.Systems)
+# plot 
+
+mypal <- mf_get_pal(11, "spectral", rev = TRUE)
+mf_map(
+  x = Current.Public.Water.Systems,
+  var = "waownty",
+    type = "typo",
+  leg_pos = "bottomleft2",
+  leg_title = "Ownership Type",
+    pal = mypal,
+  border = "grey30",
+  add = TRUE
+)
+
+
+# layout
+mf_layout(
+  title = "NC Public Water Systems",
+  credits = paste0(
+    "Sources: NC One Map\n",
+    "mapsf ",
+    packageVersion("mapsf")
+  )
+)
+
+```
+
+Here, we look at the PWS that are only municipal. These areas look much 
+more in line with what I would expect as a water distribution area.
+
+```{r,echo=FALSE}
+
+CPWS.muni <- Current.Public.Water.Systems[Current.Public.Water.Systems$waownty=="Municipality",]
+
+# set a theme
+mf_theme("default")
+# plot a shadow
+# mf_shadow(CPWS.muni)
+# plot municipalities
+mf_init(CPWS.muni)
+# mf_map(PFAS.join, add = TRUE)
+
+mf_map(CPWS.muni, add = TRUE)
+# plot population
+
+# mf_map(
+#   x = CPWS.muni,
+#   var = "waownty",
+#     type = "typo",
+#   leg_pos = "bottomleft2",
+#   leg_title = "Ownership Type",
+#     pal = mypal,
+#   border = "grey30"  
+# )
+
+
+# layout
+mf_layout(
+  title = "Municipal Public Water Systems",
+  credits = paste0(
+    "Sources: NC One Map\n",
+    "mapsf ",
+    packageVersion("mapsf")
+  )
+)
+
+```
+
+
+Questions: 
+
+1) Is it unlikely that an entire county would be supplied by a public water
+utility like those in eastern NC that are an entire county?
+
+2) Is it normal to have a well or intake location outside the boundary of the 
+supply area? i.e. some of the points are outside the municipal area
+
+3) If you were to estimate the total areas in NC serviced by a public water utility,
+would you use just the municipal or also include some of the other ownership types?
+
+
+
